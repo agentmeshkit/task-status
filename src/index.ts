@@ -69,6 +69,22 @@ export interface TaskStatusOptions {
   root?: string;
   cwd?: string;
   notifier?: TaskNotifierLike;
+  /**
+   * Optional override for the Markdown view written to
+   * `current-task.md` / `runs/<run-id>/status.md`. Use this when a consumer
+   * needs to keep a legacy heading or layout while still relying on the
+   * library for state persistence and event journaling. When omitted the
+   * built-in {@link renderMarkdown} is used.
+   */
+  renderMarkdown?: (state: TaskState) => string;
+  /**
+   * Optional override for the notification text rendered before the notifier
+   * is invoked. Useful when a consumer wants to preserve legacy wording for
+   * the human-facing message channel without re-implementing notifier
+   * dispatch. When omitted the built-in
+   * {@link renderNotificationMessage} is used.
+   */
+  renderNotificationMessage?: (event: TaskEventName, state: TaskState) => string;
 }
 
 export interface StartTaskInput {
@@ -159,11 +175,15 @@ export class TaskStatusStore {
   readonly cwd: string;
 
   private readonly notifier?: TaskNotifierLike;
+  private readonly renderMarkdownFn: (state: TaskState) => string;
+  private readonly renderNotificationMessageFn: (event: TaskEventName, state: TaskState) => string;
 
   constructor(options: TaskStatusOptions = {}) {
     this.cwd = options.cwd ? path.resolve(options.cwd) : process.cwd();
     this.root = resolveStateRoot(options.root ?? DEFAULT_STATE_DIR, this.cwd);
     this.notifier = options.notifier;
+    this.renderMarkdownFn = options.renderMarkdown ?? renderMarkdown;
+    this.renderNotificationMessageFn = options.renderNotificationMessage ?? renderNotificationMessage;
   }
 
   async start(input: StartTaskInput = {}): Promise<TaskOperationResult> {
@@ -230,11 +250,11 @@ export class TaskStatusStore {
   }
 
   renderMarkdown(state: TaskState): string {
-    return renderMarkdown(state);
+    return this.renderMarkdownFn(state);
   }
 
   renderNotificationMessage(event: TaskEventName, state: TaskState): string {
-    return renderNotificationMessage(event, state);
+    return this.renderNotificationMessageFn(event, state);
   }
 
   private async complete(
@@ -300,7 +320,7 @@ export class TaskStatusStore {
     await fs.mkdir(runDir, { recursive: true });
 
     const json = `${JSON.stringify(state, null, 2)}\n`;
-    const markdown = renderMarkdown(state);
+    const markdown = this.renderMarkdownFn(state);
 
     await writeFileAtomic(this.currentJsonPath(), json, { backup: true });
     await writeFileAtomic(this.currentMarkdownPath(), markdown, { backup: true });
@@ -332,7 +352,7 @@ export class TaskStatusStore {
       const result = await callNotifier(this.notifier, {
         event,
         state,
-        text: renderNotificationMessage(event, state),
+        text: this.renderNotificationMessageFn(event, state),
       });
       const attempt: NotificationAttempt = { ok: true, result: sanitizeForEvent(result) };
       await this.appendEvent(state, 'notified', { event, result });

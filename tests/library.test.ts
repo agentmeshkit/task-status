@@ -147,6 +147,36 @@ describe('TaskStatusStore library API', () => {
       },
     });
   });
+
+  it('uses custom renderMarkdown and renderNotificationMessage overrides', async () => {
+    const root = path.join(tempDir, '.codex-team');
+    const notifications: string[] = [];
+    const taskStatus = createTaskStatus({
+      root,
+      renderMarkdown: (state) => `# Custom heading\n\n- Run: ${state.runId}\n- Task: ${state.task}\n`,
+      renderNotificationMessage: (event, state) => `[custom ${event}] ${state.runId}`,
+      notifier: ({ text }) => {
+        notifications.push(text);
+        return { ok: true };
+      },
+    });
+
+    await taskStatus.start({
+      task: 'Override smoke',
+      runId: 'override-run',
+      summary: 'Started with overrides.',
+    });
+    await taskStatus.finish({ summary: 'Done with overrides.', notify: true });
+
+    const currentMd = await fs.readFile(path.join(root, 'current-task.md'), 'utf8');
+    const runMd = await fs.readFile(path.join(root, 'runs/override-run/status.md'), 'utf8');
+    expect(currentMd).toContain('# Custom heading');
+    expect(currentMd).toContain('- Task: Override smoke');
+    expect(currentMd).not.toContain('# Current Agent Task');
+    expect(runMd).toContain('# Custom heading');
+
+    expect(notifications).toEqual(['[custom finished] override-run']);
+  });
 });
 
 async function readEvents(root: string, runId: string): Promise<Array<Record<string, unknown>>> {
