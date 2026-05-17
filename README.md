@@ -5,6 +5,16 @@ Runtime task status and notification primitives for agent teams.
 This package extracts the file-backed `.codex-team` task status loop used by
 AgentWeb into a reusable TypeScript ESM library and CLI.
 
+Use it when a long-running agent or orchestration process needs a durable,
+human-readable status file, machine-readable task state, append-only events,
+and optional completion notifications without adding a database.
+
+## Install
+
+```bash
+pnpm add @agentmeshkit/task-status
+```
+
 ## CLI
 
 ```bash
@@ -26,7 +36,26 @@ agentmeshkit-task-status finish \
 agentmeshkit-task-status status --json
 ```
 
-Use `--root <path>` to write somewhere other than `.codex-team`.
+Use `--root <path>` to write somewhere other than `.codex-team`. Every
+mutating command prints a small JSON result with `ok`, `command`, `runId`,
+`status`, and the current Markdown path. `status` prints Markdown by default;
+use `status --json` for the complete `TaskState`.
+
+Lifecycle behavior:
+
+- `start` creates a new current task and run directory. Defaults:
+  `status: "Researching"` and `mode: "PLAN_FIRST"`.
+- `update` requires an existing current task and rewrites the current snapshot.
+  If a task had been finished, `update` removes `finishedAt` to reopen it.
+- `finish` marks the task `Done`. If no current task exists, it creates a
+  completion snapshot.
+- `fail` marks the task `Needs Human`. `--reason` is used as the summary when
+  `--summary` is not provided.
+- `--test`, `--screenshot`, and `--risk` are repeatable.
+
+The stock CLI is intentionally local-file only. `--notify` is accepted for
+API parity, but notifications require a configured library notifier; build a
+small wrapper around the library when a CLI workflow needs transport delivery.
 
 The CLI writes:
 
@@ -72,7 +101,15 @@ Top-level helpers are also exported:
 
 ```ts
 import { start, update, finish, fail, status } from '@agentmeshkit/task-status';
+
+await start({ task: 'Build feature' }, { root: '.codex-team' });
+await update({ status: 'Testing', summary: 'Running checks.' }, { root: '.codex-team' });
+await finish({ summary: 'Done.' }, { root: '.codex-team' });
 ```
+
+`createTaskStatus` also accepts `cwd` for Git branch/commit discovery and
+optional `renderMarkdown` / `renderNotificationMessage` overrides for callers
+that need legacy formatting while keeping the same file and event behavior.
 
 ## Notifications
 
@@ -80,6 +117,12 @@ Notifications are intentionally transport-agnostic. Pass a `notifier` object or
 function to `createTaskStatus`; the package does not depend on Telegram or any
 other vendor. Notifier failures are recorded in `events.jsonl` and do not
 prevent local status files from being written.
+
+Notification defaults are event-specific:
+
+- `start` and `update` notify only when the input includes `notify: true`.
+- `finish` and `fail` attempt notification by default when a notifier is
+  configured. Pass `notify: false` to suppress that attempt.
 
 Adapter example:
 
@@ -112,6 +155,11 @@ const taskStatus = createTaskStatus({
 
 await taskStatus.fail({ reason: 'Blocked by missing approval.', notify: true });
 ```
+
+The notifier receives `{ event, state, text }`. `text` comes from
+`renderNotificationMessage(event, state)` unless a custom renderer is provided.
+The return value from the notifier is sanitized before being appended to
+`events.jsonl`.
 
 ## File Format Contract
 
@@ -170,6 +218,15 @@ interface TaskEvent {
 Event payloads are redacted before write: sensitive environment values and
 sensitive-looking object keys such as `token`, `secret`, `password`, `apiKey`,
 `auth`, `cookie`, and `credential` are replaced with `[REDACTED]`.
+
+Redaction is deliberately scoped to event payloads and notifier results. The
+state snapshot, Markdown rendering, and outbound notification text are written
+from caller-provided fields. Do not place secrets, credentials, private URLs,
+customer data, or other sensitive values in `task`, `summary`, `next`, `tests`,
+`screenshots`, or `risks`.
+
+For compact agent-facing instructions, see
+[`docs/AI_AGENT_INTEGRATION.md`](docs/AI_AGENT_INTEGRATION.md).
 
 ## Development
 

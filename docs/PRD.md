@@ -24,6 +24,7 @@ projects need the same operational loop without copying scripts.
 - Store status in human-readable Markdown and machine-readable JSON.
 - Append structured events for audit and recovery.
 - Support pluggable notifiers.
+- Document the integration contract for both human callers and AI agents.
 
 ## Non-Goals
 
@@ -41,6 +42,9 @@ projects need the same operational loop without copying scripts.
 - Redaction of environment values in event payloads.
 - TypeScript ESM package exports and Vitest coverage for file formats and CLI
   smoke behavior.
+- Human README covering CLI/library usage, file format, notifications, and
+  redaction boundaries.
+- Compact `docs/AI_AGENT_INTEGRATION.md` guide for agent implementers.
 
 ## Public API Sketch
 
@@ -81,6 +85,10 @@ agentmeshkit-task-status fail --reason "Blocked"
 agentmeshkit-task-status status --json
 ```
 
+The stock CLI writes local status files and has no built-in notification
+transport. Notification delivery is a library concern: callers pass a notifier
+function/object to `createTaskStatus` or build a wrapper CLI.
+
 The implemented file layout is:
 
 ```text
@@ -94,7 +102,16 @@ The implemented file layout is:
 `current-task.json` and `runs/<run-id>/status.json` contain the same task
 snapshot. `current-task.md` and `runs/<run-id>/status.md` contain the same
 human-readable rendering. `events.jsonl` is append-only and stores redacted
-event payloads.
+event payloads and notifier results. State snapshots, Markdown, and outbound
+notification text are caller-authored and must not contain secrets.
+
+## Documentation Contract
+
+- `README.md` is the human caller guide for installation, CLI commands,
+  library API, notification adapters, file layout, and redaction scope.
+- `docs/AI_AGENT_INTEGRATION.md` is the compact agent-facing guide intended to
+  be pasted or referenced by AI agents implementing task status reporting.
+- `docs/PRD.md` records product scope and the public docs contract.
 
 ## AgentWeb Migration Notes
 
@@ -115,6 +132,8 @@ is transport-neutral and only writes local status files by default.
 - Events are append-only JSONL.
 - Notifier failures do not corrupt local status.
 - Docs include AgentWeb migration notes.
+- Docs include CLI/library usage, file format, notification behavior, redaction
+  boundaries, and the agent integration guide.
 - `pnpm build`, `pnpm typecheck`, and `pnpm test` pass.
 
 ## Milestones
