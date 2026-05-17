@@ -81,6 +81,96 @@ function to `createTaskStatus`; the package does not depend on Telegram or any
 other vendor. Notifier failures are recorded in `events.jsonl` and do not
 prevent local status files from being written.
 
+Adapter example:
+
+```ts
+import { createTaskStatus, type TaskNotification } from '@agentmeshkit/task-status';
+
+async function postToWebhook(notification: TaskNotification) {
+  const response = await fetch(process.env.TASK_STATUS_WEBHOOK_URL!, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      event: notification.event,
+      runId: notification.state.runId,
+      status: notification.state.status,
+      text: notification.text,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Webhook notification failed with HTTP ${response.status}`);
+  }
+
+  return { provider: 'webhook', status: response.status };
+}
+
+const taskStatus = createTaskStatus({
+  root: '.codex-team',
+  notifier: { notify: postToWebhook },
+});
+
+await taskStatus.fail({ reason: 'Blocked by missing approval.', notify: true });
+```
+
+## File Format Contract
+
+`task-status` treats the state directory as a durable interchange format:
+
+```text
+.codex-team/current-task.md
+.codex-team/current-task.json
+.codex-team/runs/<run-id>/status.md
+.codex-team/runs/<run-id>/status.json
+.codex-team/runs/<run-id>/events.jsonl
+```
+
+`current-task.json` and `runs/<run-id>/status.json` are the same complete
+snapshot. They use this schema:
+
+```ts
+interface TaskState {
+  runId: string;
+  task: string;
+  status: string;
+  mode: string;
+  branch: string;
+  commit: string;
+  startedAt: string;
+  updatedAt: string;
+  finishedAt?: string;
+  summary: string;
+  next: string;
+  tests: string[];
+  screenshots: string[];
+  risks: string[];
+}
+```
+
+Timestamps are ISO 8601 strings. `status` accepts the built-in lifecycle names
+and custom strings. `finishedAt` is present only after `finish` or `fail`;
+`update` removes it when reopening a task.
+
+`current-task.md` and `runs/<run-id>/status.md` are the same rendered Markdown
+view of the snapshot. Consumers should read JSON for automation and Markdown
+for human display.
+
+`events.jsonl` is append-only JSON Lines. Each line has:
+
+```ts
+interface TaskEvent {
+  at: string;
+  event: 'started' | 'updated' | 'finished' | 'failed' | 'notified' | 'notification_failed';
+  runId: string;
+  status: string;
+  payload: unknown;
+}
+```
+
+Event payloads are redacted before write: sensitive environment values and
+sensitive-looking object keys such as `token`, `secret`, `password`, `apiKey`,
+`auth`, `cookie`, and `credential` are replaced with `[REDACTED]`.
+
 ## Development
 
 ```bash

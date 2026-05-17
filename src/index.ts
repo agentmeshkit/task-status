@@ -244,24 +244,28 @@ export class TaskStatusStore {
     const current = await this.readState({ allowMissing: true });
     const now = toDate(input.now);
     const isFailure = event === 'failed';
+    const currentRunId = optionalText(current.runId);
     const summary =
-      input.summary ??
-      (isFailure && 'reason' in input ? input.reason : undefined) ??
-      current.summary ??
+      optionalText(input.summary) ??
+      (isFailure && 'reason' in input ? optionalText(input.reason) : undefined) ??
+      optionalText(current.summary) ??
       (isFailure ? 'Task stopped.' : 'Task finished.');
 
     const state: TaskState = {
-      runId: input.runId ?? current.runId ?? createRunId(now, input.task ?? event),
-      task: input.task ?? current.task ?? 'Agent task',
+      runId: optionalText(input.runId) ?? currentRunId ?? createRunId(now, input.task ?? event),
+      task: optionalText(input.task) ?? optionalText(current.task) ?? 'Agent task',
       status: isFailure ? 'Needs Human' : 'Done',
-      mode: input.mode ?? current.mode ?? 'OVERNIGHT',
-      branch: input.branch ?? current.branch ?? gitValue(['branch', '--show-current'], this.cwd),
-      commit: input.commit ?? current.commit ?? gitValue(['rev-parse', '--short', 'HEAD'], this.cwd),
-      startedAt: current.startedAt ?? now.toISOString(),
+      mode: optionalText(input.mode) ?? optionalText(current.mode) ?? 'OVERNIGHT',
+      branch: optionalText(input.branch) ?? optionalText(current.branch) ?? gitValue(['branch', '--show-current'], this.cwd),
+      commit: optionalText(input.commit) ?? optionalText(current.commit) ?? gitValue(['rev-parse', '--short', 'HEAD'], this.cwd),
+      startedAt: currentRunId ? current.startedAt : now.toISOString(),
       updatedAt: now.toISOString(),
       finishedAt: now.toISOString(),
       summary,
-      next: input.next ?? current.next ?? (isFailure ? 'Human intervention required.' : 'Human review.'),
+      next:
+        optionalText(input.next) ??
+        optionalText(current.next) ??
+        (isFailure ? 'Human intervention required.' : 'Human review.'),
       tests: input.tests ?? current.tests ?? [],
       screenshots: input.screenshots ?? current.screenshots ?? [],
       risks: input.risks ?? current.risks ?? [],
@@ -477,6 +481,10 @@ function resolveStateRoot(root: string, cwd: string): string {
 function toDate(value?: Date | string): Date {
   if (!value) return new Date();
   return value instanceof Date ? value : new Date(value);
+}
+
+function optionalText(value: string | undefined): string | undefined {
+  return value && value.length > 0 ? value : undefined;
 }
 
 function createRunId(date: Date, task: string): string {
