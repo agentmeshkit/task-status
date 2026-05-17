@@ -1,0 +1,30 @@
+{
+  "name": "@agentmeshkit/task-status",
+  "version": "0.0.0",
+  "private": false,
+  "type": "module",
+  "description": "Runtime task status and notification primitives for agent teams.",
+  "license": "MIT",
+  "bin": {
+    "agentmeshkit-task-status": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.4"
+  }
+}
+
